@@ -1,0 +1,41 @@
+{
+  "development": {
+    "username": "sa",
+    "password": "Adegboyega1",
+    "database": "MoodLagos",
+    "dialect": "mssql", 
+    "dialectOptions": {
+      "options": {
+        "requestTimeout": 30000
+      }
+    },
+    "port": 59742
+  },
+  "development2": {
+    "username": "sa",
+    "password": "Adegboyega1",
+    "database": "MoodLagos",
+    "dialect": "mssql", 
+    "dialectOptions": {
+      "options": {
+        "requestTimeout": 100000
+      }
+    },
+    "port": 59742
+  },
+  "test": {
+    "username": "sa",
+    "password": "Adegboyega1", 
+    "database": "MoodLagos",
+    "dialect": "mysql",
+    "port": 59742
+
+  },
+  "production": {
+    "username": "sa",
+    "password": "Adegboyega1",
+    "database": "MoodLagos",
+    "dialect": "mysql", 
+    "port": 59742
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "development": {
+    "username": "sa",
+    "password": "Lambvard01###",
+    "database": "clinicmanagement",
+    "dialect": "mssql"
+  },
+  "development2": {
+    "username": "sa",
+    "password": "Lambvard01###",
+    "database": "iou",
+    "dialect": "mssql"
+  },
+  "test":{
+    "username": "sa",
+    "password": "Lambvard01###",
+    "database": "clinicmanagement",
+    "dialect": "mssql"
+  },
+  "production": {
+    "username": "sa",
+    "password": "Lambvard01###",
+    "database": "clinicmanagement",
+    "dialect": "mssql"
+  }
+}
