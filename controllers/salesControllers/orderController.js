@@ -2389,7 +2389,6 @@ const updateSpecialDiscountStatus = async (req, res) => {
     const notificationUsername = orderDetails.username; // Get the username from the table
     const table = orderDetails.table; // Get the [table] FROM the casierPending table
 
-    // Step 3: Create a notification
     await sequelize.query(
       `INSERT INTO [MoodLagos].[dbo].[notifications]
        ([username], [location], [notification], [isread])
