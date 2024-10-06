@@ -17,11 +17,11 @@ const salesRoute = require("./routes/salesRoutes/salesRoute");
 const taxroute = require("./routes/taxAndDiscountRoute/taxRoute");
 const reportDashboardROute = require("./routes/Reportroute/dashboardRoute");
 
-app.use("/api/", authenticationRoute);
-app.use("/api/", productRoute);
-app.use("/api/", salesRoute);
-app.use("/api/", taxroute);
-app.use("/api/", reportDashboardROute);
+app.use("/moodlagosapi/api/", authenticationRoute);
+app.use("/moodlagosapi/api/", productRoute);
+app.use("/moodlagosapi/api/", salesRoute);
+app.use("/moodlagosapi/api/", taxroute);
+app.use("/moodlagosapi/api/", reportDashboardROute);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
