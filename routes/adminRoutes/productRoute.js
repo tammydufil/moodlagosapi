@@ -11,6 +11,7 @@ const {
   makeItemUnavailable,
   getAllBarItems,
   getAllShishaItems,
+  getAllItems,
 } = require("../../controllers/adminControllers/productController");
 const {
   addTable,
@@ -37,6 +38,7 @@ router.post("/createproduct", authenticateUser, isAdmin, createProduct);
 router.get("/getallproducts", authenticateUser, getAllProducts);
 router.get("/getallpriceupdates", authenticateUser, isAdmin, getPriceChanges);
 router.get("/getAllKitchenItems", authenticateUser, getAllKitchenItems);
+router.get("/getAllItems", authenticateUser, getAllItems);
 router.get("/getAllshishaItems", authenticateUser, getAllShishaItems);
 router.get("/getAllBarItems", authenticateUser, getAllBarItems);
 router.post("/updateproduct", authenticateUser, isAdmin, updateProduct);

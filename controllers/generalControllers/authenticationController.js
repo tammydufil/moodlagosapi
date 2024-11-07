@@ -37,6 +37,7 @@ const register = async (req, res) => {
     productmanage,
     accountmanage,
     taxmanage,
+    manageuserorders,
   } = selectedModules;
 
   // Validate required fields
@@ -78,11 +79,11 @@ const register = async (req, res) => {
                (username, usercode, userpassword, userrole, firstname, lastname, BarManage, orderManage, auditManage, 
                Kitchenmanage, reportmanage, cashiermanage, viewordersmanage, specialdiscountmanage, tablemanage, 
                discountmanage, productmanage, accountmanage, datecreated, usercreated, companyId, image, 
-               deviceused, ipused, status, Shishamanage, taxmanage) 
+               deviceused, ipused, status, Shishamanage, taxmanage, manageuserorders) 
                VALUES (:username, :usercode, :userpassword, :userrole, :firstname, :lastname, :BarManage, :orderManage, 
                :auditManage, :Kitchenmanage, :reportmanage, :cashiermanage, :viewordersmanage, :specialdiscountmanage, 
                :tablemanage, :discountmanage, :productmanage, :accountmanage, :datecreated, :usercreated, :companyId, 
-               :image, :deviceused, :ipused, :status, :Shishamanage, :taxmanage)`,
+               :image, :deviceused, :ipused, :status, :Shishamanage, :taxmanage, :manageuserorders)`,
       {
         replacements: {
           username,
@@ -112,6 +113,7 @@ const register = async (req, res) => {
           status: "Active",
           Shishamanage,
           taxmanage,
+          manageuserorders,
         },
         type: QueryTypes.INSERT,
       }
@@ -215,6 +217,7 @@ const updateUser = async (req, res) => {
     productmanage,
     accountmanage,
     taxmanage,
+    manageuserorders,
   } = selectedModules;
 
   if (!username)
@@ -268,6 +271,7 @@ const updateUser = async (req, res) => {
       productmanage,
       accountmanage,
       taxmanage,
+      manageuserorders,
     };
 
     // Hash password if provided
@@ -398,7 +402,8 @@ const getActiveModules = async (req, res) => {
           productmanage,
           accountmanage,
           auditManage,
-          taxmanage
+          taxmanage,
+          manageuserorders
       FROM [MoodLagos].[dbo].[userCreation_table]
       WHERE username = :username`,
       {
@@ -439,7 +444,7 @@ const getUnreadNotifications = async (req, res) => {
     // Extract the token from the Authorization header
     const token = req.headers.authorization?.split(" ")[1];
 
-    if (!token) {
+    if (!token) { 
       return res.status(401).json({ message: "No token provided" });
     }
 
@@ -453,7 +458,7 @@ const getUnreadNotifications = async (req, res) => {
 
     // Query the user table to get the user's roles
     const user = await sequelize.query(
-      `SELECT cashiermanage, specialdiscountmanage, BarManage, Kitchenmanage, Shishamanage, orderManage 
+      `SELECT cashiermanage, specialdiscountmanage, BarManage, Kitchenmanage, Shishamanage, orderManage,  manageuserorders 
       FROM [MoodLagos].[dbo].[userCreation_table]
       WHERE username = :username`,
       {
@@ -473,6 +478,7 @@ const getUnreadNotifications = async (req, res) => {
       Kitchenmanage,
       Shishamanage,
       orderManage,
+      manageuserorders,
     } = user[0];
 
     let queryConditions = [];
@@ -493,6 +499,9 @@ const getUnreadNotifications = async (req, res) => {
     }
     if (Shishamanage === "1") {
       queryConditions.push("location = 'SHISHA' AND isread = 0");
+    }
+    if (manageuserorders === "1") {
+      queryConditions.push("location = 'orderitemsmanage' AND isread = 0");
     }
     if (orderManage === "1") {
       queryConditions.push(

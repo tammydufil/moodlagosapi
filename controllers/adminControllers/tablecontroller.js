@@ -71,24 +71,79 @@ const getAllTables = async (req, res) => {
     });
   }
 };
+
 const getAllActiveTables = async (req, res) => {
   try {
+    // Step 1: Extract and decode the JWT to get the username
+    const token = req.headers.authorization.split(" ")[1];
+    let decoded;
+
+    try {
+      decoded = jwt.verify(token, process.env.JWT_KEY);
+    } catch (error) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const actionUsername = decoded.username;
+
+    // Step 2: Fetch all active tables
     const tables = await sequelize.query(
       `SELECT [sid], [tablename], [status] 
-         FROM [MoodLagos].[dbo].[Tables] where status = 'Active' `,
+       FROM [MoodLagos].[dbo].[Tables] 
+       WHERE status = 'Active'`,
       {
         type: QueryTypes.SELECT,
       }
     );
 
+    // Step 3: Fetch all tables that are currently in use (have transactions) with finalstatus not 'Completed'
+    const usedTables = await sequelize.query(
+      `SELECT DISTINCT [table] 
+       FROM [MoodLagos].[dbo].[salesTransaction_table] 
+       WHERE [finalstatus] IS NULL`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    // Step 4: Extract the list of tables that are currently in use by others
+    const usedTableNames = usedTables.map((transaction) => transaction.table);
+
+    // Step 5: Fetch the tables currently in use by the current user
+    const userCurrentTables = await sequelize.query(
+      `SELECT DISTINCT [table] 
+       FROM [MoodLagos].[dbo].[salesTransaction_table] 
+       WHERE [finalstatus] IS NULL AND [username] = :username`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { username: actionUsername },
+      }
+    );
+
+    // Step 6: Extract the list of tables the current user is using
+    const userCurrentTableNames = userCurrentTables.map(
+      (transaction) => transaction.table
+    );
+
+    // Step 7: Determine which tables to display to the user
+    const activeTables = tables.filter(
+      (table) =>
+        // Include tables that are either:
+        // 1. Not in use by anyone, OR
+        // 2. Specifically in use by the current user
+        !usedTableNames.includes(table.tablename) ||
+        userCurrentTableNames.includes(table.tablename)
+    );
+
+    // Step 8: Respond with the filtered list of active tables
     res.status(200).json({
-      message: "Tables fetched successfully",
-      data: tables,
+      message: "Active tables fetched successfully",
+      data: activeTables,
     });
   } catch (error) {
-    console.error("Error fetching tables:", error);
+    console.error("Error fetching active tables:", error);
     res.status(500).json({
-      message: "Failed to fetch tables",
+      message: "Failed to fetch active tables",
       error: error.message,
     });
   }
