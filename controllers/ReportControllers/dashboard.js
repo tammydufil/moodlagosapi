@@ -480,7 +480,7 @@ const getSalesReport = async (req, res) => {
                st.[price], st.[updated], st.[category], st.[itemorderid], 
                st.[location], st.[rejectionreason], st.[finalstatus], 
                st.[status], st.[completedtime], st.[createdDate], st.[table],
-               cs.[paymentType], cs.[subtotal], cs.[vat], cs.[orderdiscount], cs.[date], cs.[total]
+               cs.[paymentType], cs.[subtotal], cs.[delivery], cs.[vat], cs.[orderdiscount], cs.[date], cs.[total]
         FROM [MoodLagos].[dbo].[casierPending] st
         LEFT JOIN [MoodLagos].[dbo].[CompletedSales] cs ON st.orderid = cs.orderid
         WHERE 1=1
@@ -882,6 +882,7 @@ const getTotalOrderLogsByTime = async (req, res) => {
         completed.orderdiscount,
         completed.date,
         completed.total,
+        completed.delivery,
         sales.sid,
         sales.itemname,
         sales.username,
@@ -1063,22 +1064,22 @@ const fetchRevenueByPaymentType = async (req, res) => {
     console.log(revenueData);
 
     // Initialize totals
-    let cardTotal = 0;
-    let posTotal = 0;
-    let cashTotal = 0;
+    let CASHTOTAL = 0;
+    let MONIEPOINTTOTAL = 0;
+    let PAYFORCETOTAL = 0;
     let othersTotal = 0;
 
     // Iterate through revenue data to sum totals based on payment type
     revenueData.forEach((item) => {
       switch (item.paymentType?.toUpperCase()) {
-        case "CARD PAYMENT":
-          cardTotal += Number(item.total_revenue);
+        case "CASH":
+          CASHTOTAL += Number(item.total_revenue);
           break;
-        case "POS PAYMENT":
-          posTotal += Number(item.total_revenue);
+        case "MONIEPOINT":
+          MONIEPOINTTOTAL += Number(item.total_revenue);
           break;
-        case "CASH PAYMENT":
-          cashTotal += Number(item.total_revenue);
+        case "PAYFORCE":
+          PAYFORCETOTAL += Number(item.total_revenue);
           break;
         default:
           othersTotal += Number(item.total_revenue);
@@ -1086,19 +1087,12 @@ const fetchRevenueByPaymentType = async (req, res) => {
       }
     });
 
-    console.log({
-      cardPayment: cardTotal,
-      posPayment: posTotal,
-      cashPayment: cashTotal,
-      others: othersTotal,
-    });
-
     // Send the response with totals
     res.status(200).json({
-      cardPayment: cardTotal,
-      posPayment: posTotal,
-      cashPayment: cashTotal,
-      others: othersTotal,
+      CASHTOTAL,
+      MONIEPOINTTOTAL,
+      PAYFORCETOTAL,
+      othersTotal,
     });
   } catch (error) {
     console.error("Error fetching revenue by payment type:", error);

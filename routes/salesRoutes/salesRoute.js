@@ -40,6 +40,12 @@ const {
   mergeOrders,
   splitMergedOrders,
   getallFloortransactionlog,
+  deleteItemByOrderId,
+  updateItemQuantity,
+  updateManagerRemoval,
+  getAllFloorManagerActionTransactionLog,
+  duplicateAndDeleteOrder,
+  mergeBill,
 } = require("../../controllers/salesControllers/orderController");
 const {
   isAdmin,
@@ -64,6 +70,8 @@ router.get(
 );
 router.post("/cancelOrder", authenticateUser, cancelOrder);
 router.post("/updateiteminorder", authenticateUser, updateItemInOrderStatus);
+router.post("/deleteItemByOrderId", authenticateUser, deleteItemByOrderId);
+router.post("/updateItemQuantity", authenticateUser, updateItemQuantity);
 router.get(
   "/getkitchentransactionlog",
   authenticateUser,
@@ -149,6 +157,12 @@ router.post(
   authenticateUser,
   serveShishaItemsInOrder
 );
+router.post("/updateManagerRemoval", authenticateUser, updateManagerRemoval);
+router.get(
+  "/getAllFloorManagerActionTransactionLog",
+  authenticateUser,
+  getAllFloorManagerActionTransactionLog
+);
 router.post("/serveindividualitem", authenticateUser, serveIndividualItem);
 router.post("/completeSale", authenticateUser, completeSale);
 router.post("/applySpecialDiscount", authenticateUser, applySpecialDiscount);
@@ -158,7 +172,13 @@ router.post(
   updateSpecialDiscountStatus
 );
 router.post("/mergeOrders", authenticateUser, mergeOrders);
+router.post(
+  "/duplicateAndDeleteOrder",
+  authenticateUser,
+  duplicateAndDeleteOrder
+);
 router.post("/splitMergedOrders", authenticateUser, splitMergedOrders);
+router.post("/mergeBill", authenticateUser, mergeBill);
 router.get("/getPaymentMethods", authenticateUser, getPaymentMethods);
 router.get(
   "/getCasierPendingDiscountApproval",

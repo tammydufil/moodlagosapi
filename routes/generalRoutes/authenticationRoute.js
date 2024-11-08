@@ -16,8 +16,8 @@ const {
 
 const router = require("express").Router();
 
-router.post("/login", login);
 router.post("/register", authenticateUser, isAdmin, register);
+router.post("/login", login);
 router.post("/updateuser", authenticateUser, isAdmin, updateUser);
 router.get("/getallusers", authenticateUser, isAdmin, getAllUsers);
 router.get("/getActiveModules", authenticateUser, getActiveModules);

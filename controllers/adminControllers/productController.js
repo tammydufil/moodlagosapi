@@ -464,6 +464,44 @@ const getAllShishaItems = async (req, res) => {
       .json({ message: "Failed to fetch bar items", error: error.message });
   }
 };
+const getAllItems = async (req, res) => {
+  try {
+    const kitchenItems = await sequelize.query(
+      `SELECT TOP (1000) [sid]
+          ,[productName]
+          ,[productCategory]
+          ,[productSubcategory]
+          ,[location]
+          ,[productPrice]
+          ,[productImage]
+          ,[createdDate]
+          ,[discountrate]
+          ,[createdby]
+          ,[availabilityStatus]
+          ,[deviceused]
+          ,[ipused]
+          ,[companyId]
+      FROM [MoodLagos].[dbo].[productCreation_table]`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { location: "shisha" },
+      }
+    );
+
+    if (kitchenItems.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No items found for location 'bar'" });
+    }
+
+    res.status(200).json(kitchenItems);
+  } catch (error) {
+    console.error("Error fetching all items:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch all items", error: error.message });
+  }
+};
 
 const makeItemAvailable = async (req, res) => {
   const { productName } = req.body;
@@ -541,4 +579,7 @@ module.exports = {
   makeItemUnavailable,
   getAllBarItems,
   getAllShishaItems,
+  getAllItems,
 };
+
+// https://github.com/tammydufil/moodlagos.git

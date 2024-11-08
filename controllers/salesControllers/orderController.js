@@ -11,7 +11,6 @@ const placeOrder = async (req, res) => {
       .json({ message: "Transaction data is required and must be an array" });
   }
 
-  // Validate fields for each transaction
   for (const transaction of transactions) {
     const {
       orderid,
@@ -24,6 +23,7 @@ const placeOrder = async (req, res) => {
       status,
       itemorderid,
       table,
+      note,
     } = transaction;
     if (
       !orderid ||
@@ -48,10 +48,17 @@ const placeOrder = async (req, res) => {
 
     // Insert transactions into the salesTransaction_table
     for (const transactionData of transactions) {
+      const isSpaceLocation =
+        transactionData.location.toUpperCase() === "SPACE";
+
       await sequelize.query(
         `INSERT INTO [MoodLagos].[dbo].[salesTransaction_table] 
-        ([orderid], [itemname], [username], [quantity], [price], [category], [location], [status], [createdDate], [itemorderid], [table], [productDiscount])
-        VALUES (:orderid, :itemname, :username, :quantity, :price, :category, :location, :status, GETDATE(), :itemorderid, :table, :productDiscount)`,
+        ([orderid], [itemname], [username], [quantity], [price], [category], [location], [status], [createdDate], [itemorderid], [table], [productDiscount], [note], ${
+          isSpaceLocation ? "[servedtime], [acceptorrejecttime]" : ""
+        })
+        VALUES (:orderid, :itemname, :username, :quantity, :price, :category, :location, :status, GETDATE(), :itemorderid, :table, :productDiscount, :note, ${
+          isSpaceLocation ? "GETDATE(), GETDATE()" : ""
+        })`,
         {
           type: QueryTypes.INSERT,
           replacements: {
@@ -62,10 +69,11 @@ const placeOrder = async (req, res) => {
             price: transactionData.price,
             category: transactionData.category,
             location: transactionData.location,
-            status: transactionData.status,
+            status: isSpaceLocation ? "Served" : transactionData.status,
             itemorderid: transactionData.itemorderid,
             table: transactionData.table,
             productDiscount: transactionData.productDiscount,
+            note: transactionData?.note,
           },
           transaction,
         }
@@ -703,6 +711,98 @@ const getallFloortransactionlog = async (req, res) => {
     });
   }
 };
+const getAllFloorManagerActionTransactionLog = async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1]; // Assuming 'Bearer token'
+
+  if (!token) {
+    return res.status(401).json({ message: "Authorization token is required" });
+  }
+
+  try {
+    // Decode the token to get the username
+    const decoded = jwt.verify(token, process.env.JWT_KEY); // Replace with your actual secret
+    const username = decoded.username; // Assuming the token contains 'username'
+
+    // Count queries for each status with mergestatus = NULL and itemremoval is not null
+    const pendingCount = await sequelize.query(
+      `SELECT COUNT(*) AS count
+       FROM [MoodLagos].[dbo].[salesTransaction_table]
+       WHERE [status] = 'Pending' 
+       AND (finalstatus <> 'Completed' OR finalstatus IS NULL)
+       AND mergestatus IS NULL
+       AND itemremoval IS NOT NULL`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const inProgressCount = await sequelize.query(
+      `SELECT COUNT(*) AS count
+       FROM [MoodLagos].[dbo].[salesTransaction_table]
+       WHERE [status] = 'In Progress' 
+       AND (finalstatus <> 'Completed' OR finalstatus IS NULL)
+       AND mergestatus IS NULL
+       AND itemremoval IS NOT NULL`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const servedCount = await sequelize.query(
+      `SELECT COUNT(*) AS count
+       FROM [MoodLagos].[dbo].[salesTransaction_table]
+       WHERE [status] = 'Served' 
+       AND (finalstatus <> 'Completed' OR finalstatus IS NULL)
+       AND mergestatus IS NULL
+       AND itemremoval IS NOT NULL`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const rejectedCount = await sequelize.query(
+      `SELECT COUNT(*) AS count
+       FROM [MoodLagos].[dbo].[salesTransaction_table]
+       WHERE [status] = 'Rejected' 
+       AND (finalstatus <> 'Completed' OR finalstatus IS NULL)
+       AND mergestatus IS NULL
+       AND itemremoval IS NOT NULL`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    // Query to get all data where itemremoval is not null, filtered by mergestatus = NULL
+    const allData = await sequelize.query(
+      `SELECT st.*, pc.productName, pc.productCategory, pc.productSubcategory, 
+              pc.location AS productLocation, pc.productPrice, pc.productImage, pc.discountrate
+       FROM [MoodLagos].[dbo].[salesTransaction_table] st
+       JOIN [MoodLagos].[dbo].[productCreation_table] pc
+       ON st.itemname = pc.productName
+       WHERE (st.finalstatus <> 'Completed' OR st.finalstatus IS NULL)
+       AND st.mergestatus IS NULL
+       AND st.itemremoval IS NOT NULL`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    // Return the counts and detailed data
+    res.status(200).json({
+      pending: pendingCount[0].count,
+      inProgress: inProgressCount[0].count,
+      served: servedCount[0].count,
+      rejected: rejectedCount[0].count,
+      allData,
+    });
+  } catch (error) {
+    console.error("Error retrieving sales transaction counts:", error);
+    res.status(500).json({
+      message: "Failed to retrieve sales transaction counts",
+      error: error.message,
+    });
+  }
+};
 
 const getAllSpecialDiscountReasons = async (req, res) => {
   try {
@@ -1282,6 +1382,210 @@ const acceptAllBarItemsInOrder = async (req, res) => {
   }
 };
 
+// const updateItemInOrderStatus = async (req, res) => {
+//   const {
+//     orderId,
+//     itemname,
+//     status,
+//     currentOrderType,
+//     rejectionReason,
+//     itemorderid,
+//   } = req.body;
+
+//   if (!orderId || !itemname || !status || !itemorderid) {
+//     return res.status(400).json({
+//       message: "Order ID, Item name, Item order ID, and Status are required",
+//     });
+//   }
+
+//   const validStatuses = ["Rejected", "In Progress"];
+//   if (!validStatuses.includes(status)) {
+//     return res
+//       .status(400)
+//       .json({ message: 'Status must be either "Rejected" or "In Progress"' });
+//   }
+
+//   const token = req.headers.authorization?.split(" ")[1]; // Get the token from the Authorization header
+//   if (!token) {
+//     return res.status(401).json({ message: "Unauthorized: No token provided" });
+//   }
+
+//   let actionusername;
+//   try {
+//     const decoded = jwt.verify(token, process.env.JWT_KEY); // Use your JWT secret
+//     actionusername = decoded.username; // Adjust according to your token's structure
+//   } catch (error) {
+//     return res.status(401).json({ message: "Unauthorized: Invalid token" });
+//   }
+
+//   const currentDate = new Date().toISOString().slice(0, 19).replace("T", " "); // Current date in YYYY-MM-DD HH:mm:ss format
+
+//   try {
+//     let updatedRows;
+
+//     if (currentOrderType === "Updated-Awaiting response") {
+//       // First, update `updated = 0` for all items with the given orderId
+//       await sequelize.query(
+//         `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+//          SET updated = 0
+//          WHERE orderid = :orderId`,
+//         {
+//           type: QueryTypes.UPDATE,
+//           replacements: { orderId },
+//         }
+//       );
+
+//       // Now, update the status (and rejection reason, if applicable) for the specific item
+//       if (status === "Rejected" && rejectionReason) {
+//         [updatedRows] = await sequelize.query(
+//           `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+//            SET status = :status,
+//                rejectionreason = :rejectionReason,
+//                acceptorrejecttime = :currentDate,
+//                actionusername = :actionusername
+//            WHERE orderid = :orderId
+//              AND itemorderid = :itemorderid
+//              AND itemname = :itemname`,
+//           {
+//             type: QueryTypes.UPDATE,
+//             replacements: {
+//               orderId,
+//               itemorderid,
+//               itemname,
+//               status,
+//               rejectionReason,
+//               currentDate,
+//               actionusername,
+//             },
+//           }
+//         );
+//       } else {
+//         [updatedRows] = await sequelize.query(
+//           `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+//            SET status = :status,
+//                acceptorrejecttime = :currentDate,
+//                actionusername = :actionusername
+//            WHERE orderid = :orderId
+//              AND itemorderid = :itemorderid
+//              AND itemname = :itemname`,
+//           {
+//             type: QueryTypes.UPDATE,
+//             replacements: {
+//               orderId,
+//               itemorderid,
+//               itemname,
+//               status,
+//               currentDate,
+//               actionusername,
+//             },
+//           }
+//         );
+//       }
+//     } else if (status === "Rejected" && rejectionReason) {
+//       // If status is "Rejected" and rejection reason is provided (for normal cases)
+//       [updatedRows] = await sequelize.query(
+//         `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+//          SET status = :status,
+//              rejectionreason = :rejectionReason,
+//              acceptorrejecttime = :currentDate,
+//              actionusername = :actionusername
+//          WHERE orderid = :orderId
+//            AND itemorderid = :itemorderid
+//            AND itemname = :itemname
+//            AND status = 'Pending'`,
+//         {
+//           type: QueryTypes.UPDATE,
+//           replacements: {
+//             orderId,
+//             itemorderid,
+//             itemname,
+//             status,
+//             rejectionReason,
+//             currentDate,
+//             actionusername,
+//           },
+//         }
+//       );
+//     } else {
+//       // Regular case: Update status to "In Progress" (for normal cases)
+//       [updatedRows] = await sequelize.query(
+//         `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+//          SET status = :status,
+//              acceptorrejecttime = :currentDate,
+//              actionusername = :actionusername
+//          WHERE orderid = :orderId
+//            AND itemorderid = :itemorderid
+//            AND itemname = :itemname
+//            AND status = 'Pending'`,
+//         {
+//           type: QueryTypes.UPDATE,
+//           replacements: {
+//             orderId,
+//             itemorderid,
+//             itemname,
+//             status,
+//             currentDate,
+//             actionusername,
+//           },
+//         }
+//       );
+//     }
+
+//     // Check if any rows were updated
+//     if (updatedRows === 0) {
+//       return res.status(404).json({ message: "No matching order/item found" });
+//     }
+
+//     // Fetch the username associated with the order ID
+//     const [userRecord] = await sequelize.query(
+//       `SELECT username FROM [MoodLagos].[dbo].[salesTransaction_table]
+//        WHERE orderid = :orderId`,
+//       {
+//         type: QueryTypes.SELECT,
+//         replacements: { orderId },
+//       }
+//     );
+
+//     if (!userRecord) {
+//       return res
+//         .status(404)
+//         .json({ message: "No user found for the given order ID" });
+//     }
+
+//     const username = userRecord.username;
+
+//     // Create notification with item details
+//     await sequelize.query(
+//       `INSERT INTO [MoodLagos].[dbo].[notifications] (username, location, notification, isread)
+//        VALUES (:username, 'order', :notification, 0)`,
+//       {
+//         type: QueryTypes.INSERT,
+//         replacements: {
+//           username,
+//           notification: `Order ${orderId} item '${itemname}' status has been updated to '${status}'.`,
+//         },
+//       }
+//     );
+
+//     res.status(200).json({
+//       message:
+//         currentOrderType === "Updated-Awaiting response"
+//           ? status === "Rejected"
+//             ? `Item rejected with reason: '${rejectionReason}' and all items updated flag set to 0`
+//             : "Item status updated and all items' updated flag set to 0"
+//           : status === "Rejected"
+//           ? `Item rejected with reason: '${rejectionReason}'`
+//           : `Item status updated successfully to '${status}'`,
+//     });
+//   } catch (error) {
+//     console.error("Error updating item status:", error);
+//     res.status(500).json({
+//       message: "An error occurred while updating item status",
+//       error: error.message,
+//     });
+//   }
+// };
+
 const updateItemInOrderStatus = async (req, res) => {
   const {
     orderId,
@@ -1305,26 +1609,49 @@ const updateItemInOrderStatus = async (req, res) => {
       .json({ message: 'Status must be either "Rejected" or "In Progress"' });
   }
 
-  const token = req.headers.authorization?.split(" ")[1]; // Get the token from the Authorization header
+  const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).json({ message: "Unauthorized: No token provided" });
   }
 
   let actionusername;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_KEY); // Use your JWT secret
-    actionusername = decoded.username; // Adjust according to your token's structure
+    const decoded = jwt.verify(token, process.env.JWT_KEY);
+    actionusername = decoded.username;
   } catch (error) {
     return res.status(401).json({ message: "Unauthorized: Invalid token" });
   }
 
-  const currentDate = new Date().toISOString().slice(0, 19).replace("T", " "); // Current date in YYYY-MM-DD HH:mm:ss format
+  const currentDate = new Date().toISOString().slice(0, 19).replace("T", " ");
 
   try {
+    // Fetch the current status of the item
+    const [currentItem] = await sequelize.query(
+      `SELECT status FROM [MoodLagos].[dbo].[salesTransaction_table]
+       WHERE orderid = :orderId 
+         AND itemorderid = :itemorderid 
+         AND itemname = :itemname`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { orderId, itemorderid, itemname },
+      }
+    );
+
+    if (!currentItem) {
+      return res.status(404).json({ message: "No matching order/item found" });
+    }
+
+    // Check if the current status matches the requested status
+    if (currentItem.status === status) {
+      return res.status(400).json({
+        message: `Item already has status '${status}', no update needed`,
+      });
+    }
+
     let updatedRows;
 
     if (currentOrderType === "Updated-Awaiting response") {
-      // First, update `updated = 0` for all items with the given orderId
+      // Reset `updated` flag for all items with the given orderId
       await sequelize.query(
         `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
          SET updated = 0
@@ -1334,55 +1661,10 @@ const updateItemInOrderStatus = async (req, res) => {
           replacements: { orderId },
         }
       );
+    }
 
-      // Now, update the status (and rejection reason, if applicable) for the specific item
-      if (status === "Rejected" && rejectionReason) {
-        [updatedRows] = await sequelize.query(
-          `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
-           SET status = :status, 
-               rejectionreason = :rejectionReason, 
-               acceptorrejecttime = :currentDate, 
-               actionusername = :actionusername
-           WHERE orderid = :orderId 
-             AND itemorderid = :itemorderid 
-             AND itemname = :itemname`,
-          {
-            type: QueryTypes.UPDATE,
-            replacements: {
-              orderId,
-              itemorderid,
-              itemname,
-              status,
-              rejectionReason,
-              currentDate,
-              actionusername,
-            },
-          }
-        );
-      } else {
-        [updatedRows] = await sequelize.query(
-          `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
-           SET status = :status, 
-               acceptorrejecttime = :currentDate, 
-               actionusername = :actionusername
-           WHERE orderid = :orderId 
-             AND itemorderid = :itemorderid 
-             AND itemname = :itemname`,
-          {
-            type: QueryTypes.UPDATE,
-            replacements: {
-              orderId,
-              itemorderid,
-              itemname,
-              status,
-              currentDate,
-              actionusername,
-            },
-          }
-        );
-      }
-    } else if (status === "Rejected" && rejectionReason) {
-      // If status is "Rejected" and rejection reason is provided (for normal cases)
+    // Update status and other fields based on whether a rejection reason is provided
+    if (status === "Rejected" && rejectionReason) {
       [updatedRows] = await sequelize.query(
         `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
          SET status = :status, 
@@ -1391,8 +1673,7 @@ const updateItemInOrderStatus = async (req, res) => {
              actionusername = :actionusername
          WHERE orderid = :orderId 
            AND itemorderid = :itemorderid 
-           AND itemname = :itemname 
-           AND status = 'Pending'`,
+           AND itemname = :itemname`,
         {
           type: QueryTypes.UPDATE,
           replacements: {
@@ -1407,16 +1688,15 @@ const updateItemInOrderStatus = async (req, res) => {
         }
       );
     } else {
-      // Regular case: Update status to "In Progress" (for normal cases)
       [updatedRows] = await sequelize.query(
         `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
          SET status = :status, 
+             rejectionreason = NULL, 
              acceptorrejecttime = :currentDate, 
              actionusername = :actionusername
          WHERE orderid = :orderId 
            AND itemorderid = :itemorderid 
-           AND itemname = :itemname 
-           AND status = 'Pending'`,
+           AND itemname = :itemname`,
         {
           type: QueryTypes.UPDATE,
           replacements: {
@@ -1431,12 +1711,12 @@ const updateItemInOrderStatus = async (req, res) => {
       );
     }
 
-    // Check if any rows were updated
     if (updatedRows === 0) {
-      return res.status(404).json({ message: "No matching order/item found" });
+      return res
+        .status(404)
+        .json({ message: "No matching order/item found for update" });
     }
 
-    // Fetch the username associated with the order ID
     const [userRecord] = await sequelize.query(
       `SELECT username FROM [MoodLagos].[dbo].[salesTransaction_table]
        WHERE orderid = :orderId`,
@@ -1454,7 +1734,6 @@ const updateItemInOrderStatus = async (req, res) => {
 
     const username = userRecord.username;
 
-    // Create notification with item details
     await sequelize.query(
       `INSERT INTO [MoodLagos].[dbo].[notifications] (username, location, notification, isread)
        VALUES (:username, 'order', :notification, 0)`,
@@ -1481,6 +1760,113 @@ const updateItemInOrderStatus = async (req, res) => {
     console.error("Error updating item status:", error);
     res.status(500).json({
       message: "An error occurred while updating item status",
+      error: error.message,
+    });
+  }
+};
+
+const updateItemQuantity = async (req, res) => {
+  const { itemorderid, qty } = req.body;
+
+  // Validate input
+  if (!itemorderid || qty === undefined) {
+    return res
+      .status(400)
+      .json({ message: "itemorderid and qty are required" });
+  }
+
+  try {
+    // Update the quantity of the item
+    const [updatedRows] = await sequelize.query(
+      `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+       SET quantity = :qty
+       WHERE itemorderid = :itemorderid`,
+      {
+        type: QueryTypes.UPDATE,
+        replacements: { itemorderid, qty },
+      }
+    );
+
+    // Check if any rows were updated
+    if (updatedRows === 0) {
+      return res
+        .status(404)
+        .json({ message: "No item found with the provided itemorderid" });
+    }
+
+    return res
+      .status(200)
+      .json({ message: "Item quantity updated successfully" });
+  } catch (error) {
+    console.error("Error updating item quantity:", error);
+    return res.status(500).json({
+      message: "An error occurred while updating item quantity",
+      error: error.message,
+    });
+  }
+};
+
+const deleteItemByOrderId = async (req, res) => {
+  const { itemorderid } = req.body;
+
+  // Validate input
+  if (!itemorderid) {
+    return res.status(400).json({
+      message: "Item order ID is required",
+    });
+  }
+
+  const token = req.headers.authorization?.split(" ")[1]; // Get the token from the Authorization header
+  if (!token) {
+    return res.status(401).json({ message: "Unauthorized: No token provided" });
+  }
+
+  let actionusername;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_KEY); // Use your JWT secret
+    actionusername = decoded.username; // Adjust according to your token's structure
+  } catch (error) {
+    return res.status(401).json({ message: "Unauthorized: Invalid token" });
+  }
+
+  try {
+    // Attempt to delete the item
+    const [deletedRows] = await sequelize.query(
+      `DELETE FROM [MoodLagos].[dbo].[salesTransaction_table]
+       WHERE itemorderid = :itemorderid`,
+      {
+        type: QueryTypes.DELETE,
+        replacements: { itemorderid },
+      }
+    );
+
+    // Check if any rows were deleted
+    if (deletedRows === 0) {
+      return res
+        .status(404)
+        .json({ message: "No item found with the given order ID" });
+    }
+
+    // Optionally, you can log this action to a notifications table
+    await sequelize.query(
+      `INSERT INTO [MoodLagos].[dbo].[notifications] (username, location, notification, isread)
+       VALUES (:username, 'order', :notification, 0)`,
+      {
+        type: QueryTypes.INSERT,
+        replacements: {
+          username: actionusername,
+          notification: `Item with order ID '${itemorderid}' has been deleted.`,
+        },
+      }
+    );
+
+    res.status(200).json({
+      message: "Item deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting item:", error);
+    res.status(500).json({
+      message: "An error occurred while deleting the item",
       error: error.message,
     });
   }
@@ -1993,8 +2379,15 @@ const fetchOrderRejectionReasons = async (req, res) => {
 };
 
 const completeSale = async (req, res) => {
-  const { orderid, paymentType, subtotal, vat, orderdiscount, total } =
-    req.body;
+  const {
+    orderid,
+    paymentType,
+    subtotal,
+    vat,
+    orderdiscount,
+    total,
+    delivery,
+  } = req.body;
 
   try {
     // Step 1: Insert into CompletedSales table
@@ -2002,9 +2395,9 @@ const completeSale = async (req, res) => {
 
     await sequelize.query(
       `INSERT INTO [MoodLagos].[dbo].[CompletedSales] 
-        ([orderid], [paymentType], [subtotal], [vat], [orderdiscount], [total], [date]) 
+        ([orderid], [paymentType], [subtotal], [vat], [orderdiscount], [total], [date], [delivery]) 
        VALUES 
-        (:orderid, :paymentType, :subtotal, :vat, :orderdiscount, :total, :date)`,
+        (:orderid, :paymentType, :subtotal, :vat, :orderdiscount, :total, :date, :delivery)`,
       {
         replacements: {
           orderid,
@@ -2014,6 +2407,7 @@ const completeSale = async (req, res) => {
           orderdiscount,
           total,
           date: currentTime,
+          delivery,
         },
         type: QueryTypes.INSERT,
       }
@@ -2053,9 +2447,8 @@ const completeSale = async (req, res) => {
     });
   }
 };
-
 const getCompletedSales = async (req, res) => {
-  const { startDate, endDate } = req.query; // Expecting dates in query parameters
+  const { startDate, endDate } = req.query;
 
   if (!startDate || !endDate) {
     return res
@@ -2063,22 +2456,37 @@ const getCompletedSales = async (req, res) => {
       .json({ message: "Start date and end date are required" });
   }
 
+  // Split and format startDate to remove unwanted parts
+  const [startDateOnly] = startDate.split("T"); // Get only the date part
+  const startDateTime = `${startDateOnly} 14:00:00.0000000`; // Start date at 2 PM
+
+  // Calculate next day for end date and construct date-time for 6 AM
+  const endDateObj = new Date(endDate);
+  endDateObj.setDate(endDateObj.getDate() + 1); // Add one day
+
+  // Format endDate to YYYY-MM-DD
+  const year = endDateObj.getFullYear();
+  const month = String(endDateObj.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+  const day = String(endDateObj.getDate()).padStart(2, "0");
+
+  const endDateTime = `${year}-${month}-${day} 06:00:00.0000000`; // Next day at 6 AM
+
   try {
     const completedSales = await sequelize.query(
       `SELECT cs.[id], cs.[orderid], cs.[paymentType], cs.[subtotal], 
-              cs.[vat], cs.[orderdiscount], cs.[total], cs.[date],
+              cs.[vat], cs.[orderdiscount], cs.[delivery], cs.[total], cs.[date],
               st.[sid], st.[itemname], st.[username], st.[quantity], 
               st.[price], st.[updated], st.[category], 
               st.[itemorderid], st.[location], st.[actionusername], st.[rejectionreason], 
               st.[finalstatus], st.[status], st.[completedtime], 
-              st.[createdDate] , st.[table]
+              st.[createdDate], st.[table]
        FROM [MoodLagos].[dbo].[CompletedSales] cs
        JOIN [MoodLagos].[dbo].[salesTransaction_table] st 
        ON cs.orderid = st.orderid
-       WHERE cs.[date] BETWEEN :startDate AND :endDate`,
+       WHERE cs.[date] BETWEEN :startDateTime AND :endDateTime`,
       {
         type: QueryTypes.SELECT,
-        replacements: { startDate, endDate },
+        replacements: { startDateTime, endDateTime },
       }
     );
 
@@ -2112,9 +2520,24 @@ const getCompletedSalesForEmployee = async (req, res) => {
         .json({ message: "Start date and end date are required" });
     }
 
+    // Split and format startDate to remove unwanted parts
+    const [startDateOnly] = startDate.split("T"); // Get only the date part
+    const startDateTime = `${startDateOnly} 14:00:00.0000000`; // Start date at 2 PM
+
+    // Calculate next day for end date and construct date-time for 6 AM
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1); // Add one day
+
+    // Format endDate to YYYY-MM-DD
+    const year = endDateObj.getFullYear();
+    const month = String(endDateObj.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+    const day = String(endDateObj.getDate()).padStart(2, "0");
+
+    const endDateTime = `${year}-${month}-${day} 06:00:00.0000000`; // Next day at 6 AM
+
     // Query to get completed sales for the logged-in user
     const completedSales = await sequelize.query(
-      `SELECT cs.[id], cs.[orderid], cs.[paymentType], cs.[subtotal], 
+      `SELECT cs.[id], cs.[orderid], cs.[paymentType],cs.[delivery], cs.[subtotal], 
               cs.[vat], cs.[orderdiscount], cs.[total], cs.[date],
               st.[sid], st.[itemname], st.[username], st.[quantity], 
               st.[price], st.[updated], st.[category], 
@@ -2124,11 +2547,11 @@ const getCompletedSalesForEmployee = async (req, res) => {
        FROM [MoodLagos].[dbo].[CompletedSales] cs
        JOIN [MoodLagos].[dbo].[salesTransaction_table] st 
        ON cs.orderid = st.orderid
-       WHERE cs.[date] BETWEEN :startDate AND :endDate
+       WHERE cs.[date] BETWEEN :startDateTime AND :endDateTime
        AND st.[username] = :username`, // Filter by the username
       {
         type: QueryTypes.SELECT,
-        replacements: { startDate, endDate, username },
+        replacements: { startDateTime, endDateTime, username },
       }
     );
 
@@ -2152,6 +2575,18 @@ const getCompletedSalesKitchen = async (req, res) => {
   }
 
   try {
+    // Split and format startDate
+    const [startDateOnly] = startDate.split("T"); // Get only the date part
+    const startDateTime = `${startDateOnly} 14:00:00.0000000`; // Set start date to 2 PM
+
+    // Calculate next day for end date and set it to 6 AM
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1); // Add one day
+    const year = endDateObj.getFullYear();
+    const month = String(endDateObj.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+    const day = String(endDateObj.getDate()).padStart(2, "0");
+    const endDateTime = `${year}-${month}-${day} 06:00:00.0000000`; // Next day at 6 AM
+
     const completedSales = await sequelize.query(
       `SELECT cs.[id], cs.[orderid], cs.[paymentType], cs.[subtotal], 
               cs.[vat], cs.[orderdiscount], cs.[total], cs.[date],
@@ -2163,10 +2598,10 @@ const getCompletedSalesKitchen = async (req, res) => {
        FROM [MoodLagos].[dbo].[CompletedSales] cs
        JOIN [MoodLagos].[dbo].[salesTransaction_table] st 
        ON cs.orderid = st.orderid
-       WHERE cs.[date] BETWEEN :startDate AND :endDate and st.[location] = 'KITCHEN'`,
+       WHERE cs.[date] BETWEEN :startDateTime AND :endDateTime and st.[location] = 'KITCHEN'`,
       {
         type: QueryTypes.SELECT,
-        replacements: { startDate, endDate },
+        replacements: { startDateTime, endDateTime },
       }
     );
 
@@ -2190,6 +2625,18 @@ const getCompletedSalesBar = async (req, res) => {
   }
 
   try {
+    // Split and format startDate
+    const [startDateOnly] = startDate.split("T"); // Get only the date part
+    const startDateTime = `${startDateOnly} 14:00:00.0000000`; // Set start date to 2 PM
+
+    // Calculate next day for end date and set it to 6 AM
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1); // Add one day
+    const year = endDateObj.getFullYear();
+    const month = String(endDateObj.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+    const day = String(endDateObj.getDate()).padStart(2, "0");
+    const endDateTime = `${year}-${month}-${day} 06:00:00.0000000`; // Next day at 6 AM
+
     const completedSales = await sequelize.query(
       `SELECT cs.[id], cs.[orderid], cs.[paymentType], cs.[subtotal], 
               cs.[vat], cs.[orderdiscount], cs.[total], cs.[date],
@@ -2201,10 +2648,10 @@ const getCompletedSalesBar = async (req, res) => {
        FROM [MoodLagos].[dbo].[CompletedSales] cs
        JOIN [MoodLagos].[dbo].[salesTransaction_table] st 
        ON cs.orderid = st.orderid
-       WHERE cs.[date] BETWEEN :startDate AND :endDate and st.[location] = 'BAR'`,
+       WHERE cs.[date] BETWEEN :startDateTime AND :endDateTime and st.[location] = 'BAR'`,
       {
         type: QueryTypes.SELECT,
-        replacements: { startDate, endDate },
+        replacements: { startDateTime, endDateTime },
       }
     );
 
@@ -2217,6 +2664,7 @@ const getCompletedSalesBar = async (req, res) => {
     });
   }
 };
+
 const getCompletedSalesShisha = async (req, res) => {
   const { startDate, endDate } = req.query; // Expecting dates in query parameters
 
@@ -2227,6 +2675,18 @@ const getCompletedSalesShisha = async (req, res) => {
   }
 
   try {
+    // Split and format startDate
+    const [startDateOnly] = startDate.split("T"); // Get only the date part
+    const startDateTime = `${startDateOnly} 14:00:00.0000000`; // Set start date to 2 PM
+
+    // Calculate next day for end date and set it to 6 AM
+    const endDateObj = new Date(endDate);
+    endDateObj.setDate(endDateObj.getDate() + 1); // Add one day
+    const year = endDateObj.getFullYear();
+    const month = String(endDateObj.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+    const day = String(endDateObj.getDate()).padStart(2, "0");
+    const endDateTime = `${year}-${month}-${day} 06:00:00.0000000`; // Next day at 6 AM
+
     const completedSales = await sequelize.query(
       `SELECT cs.[id], cs.[orderid], cs.[paymentType], cs.[subtotal], 
               cs.[vat], cs.[orderdiscount], cs.[total], cs.[date],
@@ -2238,10 +2698,10 @@ const getCompletedSalesShisha = async (req, res) => {
        FROM [MoodLagos].[dbo].[CompletedSales] cs
        JOIN [MoodLagos].[dbo].[salesTransaction_table] st 
        ON cs.orderid = st.orderid
-       WHERE cs.[date] BETWEEN :startDate AND :endDate and st.[location] = 'SHISHA'`,
+       WHERE cs.[date] BETWEEN :startDateTime AND :endDateTime and st.[location] = 'SHISHA'`,
       {
         type: QueryTypes.SELECT,
-        replacements: { startDate, endDate },
+        replacements: { startDateTime, endDateTime },
       }
     );
 
@@ -2739,6 +3199,257 @@ const splitMergedOrders = async (req, res) => {
   }
 };
 
+const updateManagerRemoval = async (req, res) => {
+  const { itemOrderId, managerRemovalValue } = req.body; // Expecting itemOrderId and managerRemovalValue in the request body
+
+  if (!itemOrderId || typeof managerRemovalValue === "undefined") {
+    return res.status(400).json({
+      message: "Item order ID and manager removal value are required",
+    });
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    // Update the managerremoval field for the specified itemOrderId
+    await sequelize.query(
+      `UPDATE [MoodLagos].[dbo].[salesTransaction_table]
+       SET [itemremoval] = :managerRemovalValue
+       WHERE [itemorderid] = :itemOrderId`,
+      {
+        type: QueryTypes.UPDATE,
+        replacements: { itemOrderId, managerRemovalValue },
+        transaction,
+      }
+    );
+
+    // Create notification
+    const uniqueLocations = ["orderitemsmanage"]; // The location is set as 'orderitemsmanage'
+    const notificationMessage = "A need order modification was requested";
+
+    for (const location of uniqueLocations) {
+      if (
+        ["kitchen", "shisha", "bar", "orderitemsmanage"].includes(
+          location.toLowerCase()
+        )
+      ) {
+        await sequelize.query(
+          `INSERT INTO [MoodLagos].[dbo].[notifications] 
+          ([username], [location], [notification], [isread])
+          VALUES (NULL, :location, :notification, 0)`, // isread is set to false by default (0)
+          {
+            type: QueryTypes.INSERT,
+            replacements: {
+              location: location,
+              notification: notificationMessage,
+            },
+            transaction,
+          }
+        );
+      }
+    }
+
+    await transaction.commit();
+    res.status(200).json({
+      message: "Manager removal updated and notification created successfully.",
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.log(error);
+    res.status(500).json({
+      message: "Failed to update manager removal and create notification",
+      error: error.message,
+    });
+  }
+};
+
+const duplicateAndDeleteOrder = async (req, res) => {
+  const { orderid, customers } = req.body;
+
+  if (!orderid || !Array.isArray(customers) || customers.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "Order ID and customers data are required." });
+  }
+
+  let transaction; // Declare transaction here
+
+  try {
+    transaction = await sequelize.transaction();
+
+    // Select original orders from casierPending table
+    const originalOrders = await sequelize.query(
+      `SELECT TOP (1000) [sid], [orderid], [itemname], [username], [actionusername], [servedtime], 
+        [acceptorrejecttime], [quantity], [price], [table], [updated], [category], [itemorderid], 
+        [location], [rejectionreason], [finalstatus], [status], [completedtime], [createdDate], 
+        [sentby], [specialdiscountvalue], [specialdiscountstatus], [specialdiscountreason], 
+        [specialdiscountapprovedby], [specialdiscountapplied], [sentdate], [cashierStatus], 
+        [productDiscount], [tablechangeinfo], [mergeorderid], [mergestatus], [mergedby]
+      FROM [MoodLagos].[dbo].[casierPending] WHERE orderid = :orderid`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { orderid },
+        transaction, // Add transaction here
+      }
+    );
+
+    if (originalOrders.length === 0) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    for (const customer of customers) {
+      const { customerSplits } = customer;
+
+      for (const [index, originalOrder] of originalOrders.entries()) {
+        const quantity = customerSplits[index] || 0;
+
+        if (quantity > 0) {
+          const newOrderId = `${orderid}_customer${index + 1}`;
+
+          await sequelize.query(
+            `INSERT INTO [MoodLagos].[dbo].[casierPending] 
+            ([orderid], [itemname], [username], [actionusername], [servedtime], 
+            [acceptorrejecttime], [quantity], [price], [table], [updated], [category], 
+            [itemorderid], [location], [rejectionreason], [finalstatus], [status], 
+            [completedtime], [createdDate], [sentby], [specialdiscountvalue], 
+            [specialdiscountstatus], [specialdiscountreason], [specialdiscountapprovedby], 
+            [specialdiscountapplied], [sentdate], [cashierStatus], 
+            [productDiscount], [tablechangeinfo], [mergeorderid], [mergestatus], 
+            [mergedby])
+            VALUES (:orderid, :itemname, :username, :actionusername, :servedtime, 
+            :acceptorrejecttime, :quantity, :price, :table, :updated, :category, 
+            :itemorderid, :location, :rejectionreason, :finalstatus, :status, 
+            :completedtime, GETDATE(), :sentby, :specialdiscountvalue, 
+            :specialdiscountstatus, :specialdiscountreason, :specialdiscountapprovedby, 
+            :specialdiscountapplied, :sentdate, :cashierStatus, 
+            :productDiscount, :tablechangeinfo, :mergeorderid, :mergestatus, 
+            :mergedby)`,
+            {
+              type: QueryTypes.INSERT,
+              replacements: {
+                orderid: newOrderId,
+                itemname: originalOrder.itemname,
+                username: originalOrder.username,
+                actionusername: originalOrder.actionusername,
+                servedtime: originalOrder.servedtime,
+                acceptorrejecttime: originalOrder.acceptorrejecttime,
+                quantity,
+                price: originalOrder.price,
+                table: originalOrder.table,
+                updated: originalOrder.updated,
+                category: originalOrder.category,
+                itemorderid: originalOrder.itemorderid,
+                location: originalOrder.location,
+                rejectionreason: originalOrder.rejectionreason,
+                finalstatus: originalOrder.finalstatus,
+                status: originalOrder.status,
+                completedtime: originalOrder.completedtime,
+                // Assuming these fields are coming from originalOrder or set defaults
+                sentby: originalOrder.sentby || null,
+                specialdiscountvalue: originalOrder.specialdiscountvalue || 0,
+                specialdiscountstatus:
+                  originalOrder.specialdiscountstatus || null,
+                specialdiscountreason:
+                  originalOrder.specialdiscountreason || null,
+                specialdiscountapprovedby:
+                  originalOrder.specialdiscountapprovedby || null,
+                specialdiscountapplied:
+                  originalOrder.specialdiscountapplied || false,
+                sentdate: originalOrder.sentdate || null,
+                cashierStatus: originalOrder.cashierStatus || null,
+                productDiscount: originalOrder.productDiscount || 0,
+                tablechangeinfo: originalOrder.tablechangeinfo || null,
+                mergeorderid: originalOrder.mergeorderid || null,
+                mergestatus: originalOrder.mergestatus || null,
+                mergedby: originalOrder.mergedby || null,
+              },
+              transaction,
+            }
+          );
+        }
+      }
+    }
+
+    await sequelize.query(
+      `DELETE FROM [MoodLagos].[dbo].[casierPending] WHERE orderid = :orderid`,
+      {
+        type: QueryTypes.DELETE,
+        replacements: { orderid },
+        transaction,
+      }
+    );
+
+    await transaction.commit();
+
+    res.status(201).json({
+      message: "Orders duplicated successfully and old order deleted.",
+    });
+  } catch (error) {
+    console.error("Error duplicating orders and deleting old order:", error);
+    if (transaction) {
+      await transaction.rollback();
+    }
+    res.status(500).json({
+      message: "Failed to duplicate orders and delete old order",
+      error: error.message,
+    });
+  }
+};
+
+const mergeBill = async (req, res) => {
+  const { orderid } = req.body;
+
+  if (!orderid) {
+    return res.status(400).json({ message: "Order ID is required." });
+  }
+
+  // Extract the base order ID by removing the customer suffix
+  const baseOrderId = orderid.split("_")[0];
+
+  try {
+    // Check for any orders with the base order ID and cashierStatus of "Complete"
+    const completedOrders = await sequelize.query(
+      `SELECT * FROM [MoodLagos].[dbo].[casierPending] 
+       WHERE orderid LIKE :baseOrderId AND cashierStatus = 'Complete'`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { baseOrderId: `${baseOrderId}%` },
+      }
+    );
+
+    if (completedOrders.length > 0) {
+      return res.status(400).json({
+        message:
+          "The order can't be merged because one of the split items has been completed.",
+      });
+    }
+
+    // Proceed to merge by updating the order ID for all split items
+    await sequelize.query(
+      `UPDATE [MoodLagos].[dbo].[casierPending] 
+       SET orderid = :baseOrderId 
+       WHERE orderid LIKE :orderid`,
+      {
+        type: QueryTypes.UPDATE,
+        replacements: {
+          baseOrderId,
+          orderid: `${baseOrderId}_customer%`,
+        },
+      }
+    );
+
+    res.status(200).json({
+      message: "Orders merged successfully.",
+    });
+  } catch (error) {
+    console.error("Error merging orders:", error);
+    res.status(500).json({
+      message: "Failed to merge orders.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getPendingSalesForEmployee,
   getPendingSalesForLocation,
@@ -2775,4 +3486,10 @@ module.exports = {
   mergeOrders,
   splitMergedOrders,
   getallFloortransactionlog,
+  deleteItemByOrderId,
+  updateItemQuantity,
+  updateManagerRemoval,
+  getAllFloorManagerActionTransactionLog,
+  duplicateAndDeleteOrder,
+  mergeBill,
 };
