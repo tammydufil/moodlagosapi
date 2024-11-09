@@ -50,15 +50,15 @@ const placeOrder = async (req, res) => {
     for (const transactionData of transactions) {
       const isSpaceLocation =
         transactionData.location.toUpperCase() === "SPACE";
+      const additionalColumns = isSpaceLocation
+        ? ", [servedtime], [acceptorrejecttime]"
+        : "";
+      const additionalValues = isSpaceLocation ? ", GETDATE(), GETDATE()" : "";
 
       await sequelize.query(
         `INSERT INTO [MoodLagos].[dbo].[salesTransaction_table] 
-        ([orderid], [itemname], [username], [quantity], [price], [category], [location], [status], [createdDate], [itemorderid], [table], [productDiscount], [note], ${
-          isSpaceLocation ? "[servedtime], [acceptorrejecttime]" : ""
-        })
-        VALUES (:orderid, :itemname, :username, :quantity, :price, :category, :location, :status, GETDATE(), :itemorderid, :table, :productDiscount, :note, ${
-          isSpaceLocation ? "GETDATE(), GETDATE()" : ""
-        })`,
+        ([orderid], [itemname], [username], [quantity], [price], [category], [location], [status], [createdDate], [itemorderid], [table], [productDiscount], [note]${additionalColumns})
+        VALUES (:orderid, :itemname, :username, :quantity, :price, :category, :location, :status, GETDATE(), :itemorderid, :table, :productDiscount, :note${additionalValues})`,
         {
           type: QueryTypes.INSERT,
           replacements: {
@@ -114,9 +114,9 @@ const placeOrder = async (req, res) => {
       error
     );
 
-    // if (transaction) {
-    //   await transaction.rollback();
-    // }
+    if (transaction) {
+      await transaction.rollback();
+    }
     res.status(500).json({
       message: "Failed to insert sales transactions and notifications",
       error: error.message,
