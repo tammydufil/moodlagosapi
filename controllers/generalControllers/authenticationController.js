@@ -113,7 +113,7 @@ const register = async (req, res) => {
           status: "Active",
           Shishamanage,
           taxmanage,
-          manageuserorders,
+          manageuserorders:manageuserorders ? manageuserorders : "",
         },
         type: QueryTypes.INSERT,
       }
