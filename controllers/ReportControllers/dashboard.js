@@ -1297,16 +1297,19 @@ const getCashierSalesReportByDateRange = async (req, res) => {
 
     const salesReportQuery = `
       SELECT 
-        paymentType,
-        SUM(CAST(subtotal AS DECIMAL(18, 2))) AS total_subtotal,
-        SUM(CAST(vat AS DECIMAL(18, 2))) AS total_vat,
-        SUM(CAST(orderdiscount AS DECIMAL(18, 2))) AS total_discount,
-        SUM(CAST(delivery AS DECIMAL(18, 2))) AS total_delivery,
-        SUM(CAST(total AS DECIMAL(18, 2))) AS grand_total
-      FROM [MoodLagos].[dbo].[CompletedSales]
+        cs.paymentType,
+        SUM(CAST(cs.subtotal AS DECIMAL(18, 2))) AS total_subtotal,
+        SUM(CAST(cs.vat AS DECIMAL(18, 2))) AS total_vat,
+        SUM(CAST(cs.orderdiscount AS DECIMAL(18, 2))) AS total_discount,
+        SUM(CAST(cs.delivery AS DECIMAL(18, 2))) AS total_delivery,
+        SUM(CAST(cs.total AS DECIMAL(18, 2))) AS grand_total
+      FROM [MoodLagos].[dbo].[CompletedSales] cs
+      INNER JOIN [MoodLagos].[dbo].[casierPending] cp
+        ON cs.orderid = cp.orderid
       WHERE 
-        CONVERT(DATETIME, [date], 120) BETWEEN :startDateString AND :endDateString
-      GROUP BY paymentType
+        cp.cashierStatus = 'Complete' AND
+        CONVERT(DATETIME, cs.[date], 120) BETWEEN :startDateString AND :endDateString
+      GROUP BY cs.paymentType
     `;
 
     const salesData = await sequelize.query(salesReportQuery, {
