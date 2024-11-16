@@ -1184,12 +1184,12 @@ const getSalesReportByDateRange = async (req, res) => {
 
     // Define start and end times
     const startDateTime = new Date(parsedDate);
-    startDateTime.setDate(startDateTime.getDate() - 1);
+    startDateTime.setDate(startDateTime.getDate() );
 
     startDateTime.setHours(12, 0, 0); // 12 PM on the selected date
 
     const endDateTime = new Date(parsedDate);
-    // endDateTime.setDate(endDateTime.getDate() + 2);
+    endDateTime.setDate(endDateTime.getDate() + 1);
     endDateTime.setHours(10, 0, 0); // 10 AM the next day
 
     // Format for SQL compatibility and to ensure UTC alignment
@@ -1272,7 +1272,30 @@ const getCashierSalesReportByDateRange = async (req, res) => {
   try {
     const { selectedDate } = req.params;
 
-    // Parse selectedDate as a date object to verify its validity
+    // // Parse selectedDate as a date object to verify its validity
+    // const parsedDate = new Date(selectedDate);
+    // if (isNaN(parsedDate.getTime())) {
+    //   throw new Error("Invalid selectedDate format");
+    // }
+
+    // // Define start and end times
+    // const startDateTime = new Date(parsedDate);
+    // startDateTime.setDate(startDateTime.getDate() - 1);
+    // startDateTime.setHours(12, 0, 0); // 12 PM on the selected date
+
+    // const endDateTime = new Date(parsedDate);
+    // endDateTime.setHours(10, 0, 0); // 10 AM the next day
+
+    // const startDateString = startDateTime
+    //   .toISOString()
+    //   .slice(0, 19)
+    //   .replace("T", " ");
+    // const endDateString = endDateTime
+    //   .toISOString()
+    //   .slice(0, 19)
+    //   .replace("T", " ");
+
+
     const parsedDate = new Date(selectedDate);
     if (isNaN(parsedDate.getTime())) {
       throw new Error("Invalid selectedDate format");
@@ -1280,12 +1303,15 @@ const getCashierSalesReportByDateRange = async (req, res) => {
 
     // Define start and end times
     const startDateTime = new Date(parsedDate);
-    startDateTime.setDate(startDateTime.getDate() - 1);
+    startDateTime.setDate(startDateTime.getDate() );
+
     startDateTime.setHours(12, 0, 0); // 12 PM on the selected date
 
     const endDateTime = new Date(parsedDate);
+    endDateTime.setDate(endDateTime.getDate() + 1);
     endDateTime.setHours(10, 0, 0); // 10 AM the next day
 
+    // Format for SQL compatibility and to ensure UTC alignment
     const startDateString = startDateTime
       .toISOString()
       .slice(0, 19)
@@ -1295,22 +1321,25 @@ const getCashierSalesReportByDateRange = async (req, res) => {
       .slice(0, 19)
       .replace("T", " ");
 
-    const salesReportQuery = `
+      const salesReportQuery = `
       SELECT 
         cs.paymentType,
-        SUM(CAST(cs.subtotal AS DECIMAL(18, 2))) AS total_subtotal,
-        SUM(CAST(cs.vat AS DECIMAL(18, 2))) AS total_vat,
-        SUM(CAST(cs.orderdiscount AS DECIMAL(18, 2))) AS total_discount,
-        SUM(CAST(cs.delivery AS DECIMAL(18, 2))) AS total_delivery,
-        SUM(CAST(cs.total AS DECIMAL(18, 2))) AS grand_total
-      FROM [MoodLagos].[dbo].[CompletedSales] cs
-      INNER JOIN [MoodLagos].[dbo].[casierPending] cp
+        SUM(TRY_CAST(cs.subtotal AS DECIMAL(18, 2))) AS total_subtotal,
+        SUM(TRY_CAST(cs.vat AS DECIMAL(18, 2))) AS total_vat,
+        SUM(TRY_CAST(cs.orderdiscount AS DECIMAL(18, 2))) AS total_discount,
+        SUM(TRY_CAST(cs.delivery AS DECIMAL(18, 2))) AS total_delivery,
+        SUM(TRY_CAST(cs.total AS DECIMAL(18, 2))) AS grand_total
+      FROM 
+        [MoodLagos].[dbo].[CompletedSales] cs
+      INNER JOIN 
+        (SELECT DISTINCT orderid FROM [MoodLagos].[dbo].[casierPending] WHERE cashierStatus = 'Complete') cp
         ON cs.orderid = cp.orderid
       WHERE 
-        cp.cashierStatus = 'Complete' AND
         CONVERT(DATETIME, cs.[date], 120) BETWEEN :startDateString AND :endDateString
-      GROUP BY cs.paymentType
+      GROUP BY 
+        cs.paymentType
     `;
+    
 
     const salesData = await sequelize.query(salesReportQuery, {
       type: QueryTypes.SELECT,
@@ -1364,17 +1393,20 @@ const getCashierSalesReportByDateRange = async (req, res) => {
 
     // Query to join with casierPending table for employee-specific sales totals
     const employeeSalesQuery = `
-      SELECT 
-        cp.username AS employee,
-        SUM(CAST(cs.total AS DECIMAL(18, 2))) AS total_sales
-      FROM [MoodLagos].[dbo].[CompletedSales] AS cs
-      JOIN [MoodLagos].[dbo].[casierPending] AS cp
+    SELECT 
+      cp.username AS employee,
+      SUM(TRY_CAST(cs.subtotal AS DECIMAL(18, 2))) AS total_sales
+    FROM 
+      [MoodLagos].[dbo].[CompletedSales] AS cs
+    JOIN 
+      (SELECT DISTINCT orderid, username FROM [MoodLagos].[dbo].[casierPending] WHERE cashierStatus = 'Complete') cp
       ON cs.orderid = cp.orderid
-      WHERE 
-        CONVERT(DATETIME, cs.[date], 120) BETWEEN :startDateString AND :endDateString
-        AND cp.cashierStatus = 'Complete'
-      GROUP BY cp.username
-    `;
+    WHERE 
+      CONVERT(DATETIME, cs.[date], 120) BETWEEN :startDateString AND :endDateString
+    GROUP BY 
+      cp.username
+  `;
+  
 
     const employeeSales = await sequelize.query(employeeSalesQuery, {
       type: QueryTypes.SELECT,

@@ -10,18 +10,18 @@ const {
   markNotificationAsRead,
 } = require("../../controllers/generalControllers/authenticationController");
 const {
-  isAdmin,
+  
   authenticateUser,
 } = require("../../middlewares/authMiddleware");
 
 const router = require("express").Router();
 
-router.post("/register", authenticateUser, isAdmin, register);
+router.post("/register", authenticateUser,  register);
 router.post("/login", login);
-router.post("/updateuser", authenticateUser, isAdmin, updateUser);
-router.get("/getallusers", authenticateUser, isAdmin, getAllUsers);
+router.post("/updateuser", authenticateUser,  updateUser);
+router.get("/getallusers", authenticateUser,  getAllUsers);
 router.get("/getActiveModules", authenticateUser, getActiveModules);
-router.post("/deleteuser", authenticateUser, isAdmin, deleteUser);
+router.post("/deleteuser", authenticateUser,  deleteUser);
 
 router.get("/getUnreadNotifications", authenticateUser, getUnreadNotifications);
 

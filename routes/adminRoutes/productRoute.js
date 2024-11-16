@@ -22,7 +22,7 @@ const {
   updateTableChange,
 } = require("../../controllers/adminControllers/tablecontroller");
 const {
-  isAdmin,
+  
   authenticateUser,
 } = require("../../middlewares/authMiddleware");
 
@@ -34,25 +34,25 @@ router.get(
   authenticateUser,
   getAllSubProductCategories
 );
-router.post("/createproduct", authenticateUser, isAdmin, createProduct);
+router.post("/createproduct", authenticateUser,  createProduct);
 router.get("/getallproducts", authenticateUser, getAllProducts);
-router.get("/getallpriceupdates", authenticateUser, isAdmin, getPriceChanges);
+router.get("/getallpriceupdates", authenticateUser,  getPriceChanges);
 router.get("/getAllKitchenItems", authenticateUser, getAllKitchenItems);
 router.get("/getAllItems", authenticateUser, getAllItems);
 router.get("/getAllshishaItems", authenticateUser, getAllShishaItems);
 router.get("/getAllBarItems", authenticateUser, getAllBarItems);
-router.post("/updateproduct", authenticateUser, isAdmin, updateProduct);
+router.post("/updateproduct", authenticateUser,  updateProduct);
 router.post("/makeItemAvailable", authenticateUser, makeItemAvailable);
 router.post("/makeItemUnavailable", authenticateUser, makeItemUnavailable);
 
 router.post("/deleteTable", authenticateUser, deleteTable);
 router.post("/updateTableStatus", authenticateUser, updateTableStatus);
 
-router.delete("/deleteproduct", authenticateUser, isAdmin, deleteProduct);
+router.delete("/deleteproduct", authenticateUser,  deleteProduct);
 
 // Tables
 
-router.post("/addtable", authenticateUser, isAdmin, addTable);
+router.post("/addtable", authenticateUser,  addTable);
 router.get("/getAllTables", authenticateUser, getAllTables);
 router.get("/getAllActiveTables", authenticateUser, getAllActiveTables);
 router.post("/updateTableChange", authenticateUser, updateTableChange);
