@@ -1172,6 +1172,235 @@ const getTotalPaymentsByMonth = async (req, res) => {
   }
 };
 
+const getSalesReportByDateRange = async (req, res) => {
+  try {
+    const { selectedDate } = req.params;
+
+    // Parse selectedDate as a date object to verify its validity
+    const parsedDate = new Date(selectedDate);
+    if (isNaN(parsedDate.getTime())) {
+      throw new Error("Invalid selectedDate format");
+    }
+
+    // Define start and end times
+    const startDateTime = new Date(parsedDate);
+    startDateTime.setDate(startDateTime.getDate() - 1);
+
+    startDateTime.setHours(12, 0, 0); // 12 PM on the selected date
+
+    const endDateTime = new Date(parsedDate);
+    // endDateTime.setDate(endDateTime.getDate() + 2);
+    endDateTime.setHours(10, 0, 0); // 10 AM the next day
+
+    // Format for SQL compatibility and to ensure UTC alignment
+    const startDateString = startDateTime
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+    const endDateString = endDateTime
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+
+    console.log("Start Date:", startDateString);
+    console.log("End Date:", endDateString);
+
+    // Update salesQuery to include only completed statuses
+    const salesQuery = `
+      SELECT 
+        itemname,
+        SUM(CAST(quantity AS INT)) AS total_quantity,
+        SUM(CAST(price AS DECIMAL(18, 2)) * CAST(quantity AS INT)) AS total_revenue
+      FROM [MoodLagos].[dbo].[casierPending]
+      WHERE 
+        CONVERT(DATETIME, completedtime, 120) BETWEEN :startDateString AND :endDateString
+        AND cashierStatus = 'Complete'
+      GROUP BY itemname
+    `;
+
+    const salesData = await sequelize.query(salesQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDateString, endDateString },
+    });
+
+    const subcategoryQuery = `
+      SELECT 
+        pc.productSubcategory AS subcategory,
+        SUM(CAST(cp.quantity AS INT)) AS total_quantity_sold,
+        SUM(CAST(cp.price AS DECIMAL(18, 2)) * CAST(cp.quantity AS INT)) AS total_revenue
+      FROM [MoodLagos].[dbo].[casierPending] AS cp
+      JOIN [MoodLagos].[dbo].[productCreation_table] AS pc
+      ON cp.itemname = pc.productName
+      WHERE 
+        CONVERT(DATETIME, cp.completedtime, 120) BETWEEN :startDateString AND :endDateString
+        AND cp.cashierStatus = 'Complete'
+      GROUP BY pc.productSubcategory
+    `;
+
+    const subcategoryData = await sequelize.query(subcategoryQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDateString, endDateString },
+    });
+
+    const totalQuantity = subcategoryData.reduce(
+      (sum, item) => sum + item.total_quantity_sold,
+      0
+    );
+    const subcategoryReport = subcategoryData.map((subcategory) => ({
+      ...subcategory,
+      percentage: (
+        (subcategory.total_quantity_sold / totalQuantity) *
+        100
+      ).toFixed(2),
+    }));
+
+    res.status(200).json({
+      message: "Sales report by date range",
+      itemsSoldReport: salesData,
+      subcategorySalesReport: subcategoryReport,
+    });
+  } catch (error) {
+    console.error("Error fetching sales report:", error);
+    res.status(500).json({
+      message: "Error fetching sales report",
+      error: error.message,
+    });
+  }
+};
+
+const getCashierSalesReportByDateRange = async (req, res) => {
+  try {
+    const { selectedDate } = req.params;
+
+    // Parse selectedDate as a date object to verify its validity
+    const parsedDate = new Date(selectedDate);
+    if (isNaN(parsedDate.getTime())) {
+      throw new Error("Invalid selectedDate format");
+    }
+
+    // Define start and end times
+    const startDateTime = new Date(parsedDate);
+    startDateTime.setDate(startDateTime.getDate() - 1);
+    startDateTime.setHours(12, 0, 0); // 12 PM on the selected date
+
+    const endDateTime = new Date(parsedDate);
+    endDateTime.setHours(10, 0, 0); // 10 AM the next day
+
+    const startDateString = startDateTime
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+    const endDateString = endDateTime
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+
+    const salesReportQuery = `
+      SELECT 
+        paymentType,
+        SUM(CAST(subtotal AS DECIMAL(18, 2))) AS total_subtotal,
+        SUM(CAST(vat AS DECIMAL(18, 2))) AS total_vat,
+        SUM(CAST(orderdiscount AS DECIMAL(18, 2))) AS total_discount,
+        SUM(CAST(delivery AS DECIMAL(18, 2))) AS total_delivery,
+        SUM(CAST(total AS DECIMAL(18, 2))) AS grand_total
+      FROM [MoodLagos].[dbo].[CompletedSales]
+      WHERE 
+        CONVERT(DATETIME, [date], 120) BETWEEN :startDateString AND :endDateString
+      GROUP BY paymentType
+    `;
+
+    const salesData = await sequelize.query(salesReportQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDateString, endDateString },
+    });
+
+    // Calculate accumulations
+    const totals = salesData.reduce(
+      (acc, sale) => {
+        const discount =
+          sale.total_subtotal + sale.total_vat - sale.grand_total;
+        acc.totalDiscount += discount;
+        acc.totalSubtotal += sale.total_subtotal;
+        acc.totalVAT += sale.total_vat;
+        acc.totalSales += sale.grand_total;
+
+        // Track payment type totals
+        acc.paymentTypeTotals[sale.paymentType] =
+          (acc.paymentTypeTotals[sale.paymentType] || 0) + sale.grand_total;
+
+        // Track delivery totals
+        if (sale.total_delivery) {
+          acc.totalDelivery += sale.total_delivery;
+          acc.totalNonNullDelivery += sale.grand_total;
+        }
+
+        return acc;
+      },
+      {
+        totalDiscount: 0,
+        totalSubtotal: 0,
+        totalVAT: 0,
+        totalSales: 0,
+        paymentTypeTotals: {},
+        totalDelivery: 0,
+        totalNonNullDelivery: 0,
+      }
+    );
+
+    // Calculate payment type percentages
+    const paymentTypePercentages = Object.keys(totals.paymentTypeTotals).map(
+      (type) => ({
+        paymentType: type,
+        total: totals.paymentTypeTotals[type],
+        percentage: (
+          (totals.paymentTypeTotals[type] / totals.totalSales) *
+          100
+        ).toFixed(2),
+      })
+    );
+
+    // Query to join with casierPending table for employee-specific sales totals
+    const employeeSalesQuery = `
+      SELECT 
+        cp.username AS employee,
+        SUM(CAST(cs.total AS DECIMAL(18, 2))) AS total_sales
+      FROM [MoodLagos].[dbo].[CompletedSales] AS cs
+      JOIN [MoodLagos].[dbo].[casierPending] AS cp
+      ON cs.orderid = cp.orderid
+      WHERE 
+        CONVERT(DATETIME, cs.[date], 120) BETWEEN :startDateString AND :endDateString
+        AND cp.cashierStatus = 'Complete'
+      GROUP BY cp.username
+    `;
+
+    const employeeSales = await sequelize.query(employeeSalesQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDateString, endDateString },
+    });
+
+    // Respond with calculated results
+    res.status(200).json({
+      message: "Detailed sales report by date range",
+      totals: {
+        totalDiscount: totals.totalDiscount.toFixed(2),
+        totalSubtotal: totals.totalSubtotal.toFixed(2),
+        totalVAT: totals.totalVAT.toFixed(2),
+        totalSales: totals.totalSales.toFixed(2),
+        totalDelivery: totals.totalDelivery.toFixed(2),
+        totalNonNullDelivery: totals.totalNonNullDelivery.toFixed(2),
+      },
+      paymentTypeSummary: paymentTypePercentages,
+      employeeSales,
+    });
+  } catch (error) {
+    console.error("Error fetching detailed sales report:", error);
+    res.status(500).json({
+      message: "Error fetching detailed sales report",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   fetchSalesDataForEmployee,
   fetchEmployeeSalesByDate,
@@ -1187,4 +1416,6 @@ module.exports = {
   getTotalOrderLogsByTime,
   fetchRevenueByPaymentType,
   getTotalPaymentsByMonth,
+  getSalesReportByDateRange,
+  getCashierSalesReportByDateRange,
 };

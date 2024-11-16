@@ -1,9 +1,10 @@
 {
   "development": {
     "username": "sa",
-    "password": "M@@DLAG@S@2024",
-    "database": "moodlagos",
-    "dialect": "mssql", 
+    "password": "Adegboyega1", 
+    "database": "MoodLagos",
+    "dialect": "mssql",
+    "port": 1434,
     "dialectOptions": {
       "options": {
         "requestTimeout": 30000,
@@ -29,7 +30,6 @@
     "database": "MoodLagos",
     "dialect": "mysql",
     "port": 59742
-
   },
   "production": {
     "username": "sa",

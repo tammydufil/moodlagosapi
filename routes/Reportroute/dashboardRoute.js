@@ -10,6 +10,8 @@ const {
   getSalesPerLocation,
   getTotalLogsByTime,
   getReportData,
+  getSalesReportByDateRange,
+  getCashierSalesReportByDateRange,
 } = require("../../controllers/ReportControllers/dashboard");
 const { authenticateUser } = require("../../middlewares/authMiddleware");
 
@@ -50,5 +52,15 @@ router.get("/getTopSellingProducts", authenticateUser, getTopSellingProducts);
 router.get("/getSalesPerLocation", authenticateUser, getSalesPerLocation);
 router.get("/getTotalLogsByTime", authenticateUser, getTotalLogsByTime);
 router.get("/getReportData", authenticateUser, getReportData);
+router.get(
+  "/getSalesReportByDateRange/:selectedDate",
+  authenticateUser,
+  getSalesReportByDateRange
+);
 
+router.get(
+  "/getCashierSalesReportByDateRange/:selectedDate",
+  authenticateUser,
+  getCashierSalesReportByDateRange
+);
 module.exports = router;
