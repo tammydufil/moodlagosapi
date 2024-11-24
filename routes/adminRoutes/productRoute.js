@@ -12,6 +12,7 @@ const {
   getAllBarItems,
   getAllShishaItems,
   getAllItems,
+  getAllGeneraProducts,
 } = require("../../controllers/adminControllers/productController");
 const {
   addTable,
@@ -36,6 +37,7 @@ router.get(
 );
 router.post("/createproduct", authenticateUser,  createProduct);
 router.get("/getallproducts", authenticateUser, getAllProducts);
+router.get("/getAllGeneraProducts", authenticateUser, getAllGeneraProducts);
 router.get("/getallpriceupdates", authenticateUser,  getPriceChanges);
 router.get("/getAllKitchenItems", authenticateUser, getAllKitchenItems);
 router.get("/getAllItems", authenticateUser, getAllItems);

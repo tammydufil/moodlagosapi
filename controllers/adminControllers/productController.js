@@ -107,8 +107,8 @@ const createProduct = async (req, res) => {
 
     const result = await sequelize.query(
       `INSERT INTO [MoodLagos].[dbo].[productCreation_table] 
-          (productName, productCategory, productSubcategory, productPrice, productImage, createdDate, createdby, deviceused, ipused, companyId, location)
-          VALUES (:productName, :productCategory, :productSubcategory, :productPrice, :productImage, :createdDate, :createdby, :deviceused, :ipused, :companyId, :location)`,
+          (productName, productCategory, productSubcategory, productPrice, productImage, createdDate, createdby, deviceused, ipused, companyId, location, availabilityStatus)
+          VALUES (:productName, :productCategory, :productSubcategory, :productPrice, :productImage, :createdDate, :createdby, :deviceused, :ipused, :companyId, :location. :availabilityStatus)`,
       {
         replacements: {
           productName,
@@ -122,6 +122,7 @@ const createProduct = async (req, res) => {
           ipused,
           companyId,
           location,
+          availabilityStatus:"Available"
         },
         type: QueryTypes.INSERT,
       }
@@ -157,6 +158,41 @@ const getAllProducts = async (req, res) => {
            location,
            discountrate
          FROM [MoodLagos].[dbo].[productCreation_table] where availabilitystatus = 'Available'`,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({ message: "No products found" });
+    }
+
+    res.status(200).json({ products });
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to retrieve products", error: error.message });
+  }
+};
+const getAllGeneraProducts = async (req, res) => {
+  try {
+    const products = await sequelize.query(
+      `SELECT 
+           sid,
+           productName, 
+           productCategory, 
+           productSubcategory, 
+           productPrice, 
+           productImage, 
+           createdDate, 
+           createdby, 
+           deviceused, 
+           ipused, 
+           companyId, 
+           location,
+           discountrate
+         FROM [MoodLagos].[dbo].[productCreation_table]`,
       {
         type: QueryTypes.SELECT,
       }
@@ -580,6 +616,7 @@ module.exports = {
   getAllBarItems,
   getAllShishaItems,
   getAllItems,
+  getAllGeneraProducts
 };
 
 // https://github.com/tammydufil/moodlagos.git
